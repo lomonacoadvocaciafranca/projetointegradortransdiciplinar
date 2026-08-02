@@ -1,0 +1,53 @@
+import streamlit as st
+import requests
+
+# Configuração da página
+st.set_page_config(page_title="Vitrine de Cupcakes", page_icon="🧁", layout="wide")
+
+st.title("🧁 Catálogo de Cupcakes")
+st.markdown("Confira nossos sabores disponíveis!")
+st.divider()
+
+# Função para buscar os dados na API
+@st.cache_data(ttl=60) # Cache de 60 segundos
+def buscar_cupcakes():
+    try:
+        # Faz a requisição para o endpoint local do FastAPI
+        resposta = requests.get("http://127.0.0.1:8000/api/cupcakes")
+        resposta.raise_for_status()
+        return resposta.json()
+    except requests.exceptions.RequestException as e:
+        st.error(f"Erro ao conectar com o servidor: {e}")
+        return []
+
+produtos = buscar_cupcakes()
+
+if not produtos:
+    st.warning("Nenhum cupcake disponível no momento.")
+else:
+    # Criação da grade dinâmica para os cards (3 colunas por linha)
+    colunas = st.columns(3)
+    
+    for index, produto in enumerate(produtos):
+        # Distribui os produtos sequencialmente entre as colunas
+        with colunas[index % 3]:
+            # Container estilizado para o card
+            with st.container(border=True):
+                st.image(produto["imagem_url"], use_container_width=True)
+                st.subheader(produto["nome"])
+                st.write(produto["descricao"])
+                
+                # Formatação de preço e estoque
+                preco_formatado = f"R$ {produto['preco']:.2f}".replace('.', ',')
+                st.markdown(f"**Preço:** {preco_formatado}")
+                
+                # Lógica de status de estoque
+                if produto["estoque"] > 5:
+                    st.success(f"Em estoque ({produto['estoque']} unidades)")
+                elif 0 < produto["estoque"] <= 5:
+                    st.warning(f"Últimas unidades! ({produto['estoque']} restam)")
+                else:
+                    st.error("Esgotado")
+                
+                # Botão de ação (apenas visual para a US01)
+                st.button("Adicionar ao Carrinho", key=f"btn_{produto['id']}", disabled=(produto['estoque'] == 0))
