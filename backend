@@ -1,0 +1,32 @@
+from fastapi import FastAPI
+import sqlite3
+
+app = FastAPI(title="API Vitrine de Cupcakes")
+
+def get_db_connection():
+    # Conecta ao banco de dados SQLite
+    conn = sqlite3.connect('cupcakes.db')
+    # Permite acessar as colunas pelo nome
+    conn.row_factory = sqlite3.Row
+    return conn
+
+@app.get("/api/cupcakes")
+def listar_cupcakes_ativos():
+    """
+    Retorna a lista de produtos ativos com nome, descrição, 
+    preço, imagem e status de estoque.
+    """
+    conn = get_db_connection()
+    
+    query = """
+        SELECT id, nome, descricao, preco, imagem_url, estoque 
+        FROM cupcakes 
+        WHERE ativo = 1
+    """
+    
+    resultados = conn.execute(query).fetchall()
+    conn.close()
+    
+    # Converte os resultados em uma lista de dicionários
+    cupcakes = [dict(row) for row in resultados]
+    return cupcakes
