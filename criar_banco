@@ -1,0 +1,32 @@
+import sqlite3
+
+# Conecta ao banco de dados (isso criará o arquivo 'cupcakes.db' na pasta atual se ele não existir)
+conn = sqlite3.connect('cupcakes.db')
+cursor = conn.cursor()
+
+# Executa o script SQL para criar a tabela e inserir os dados de exemplo
+cursor.executescript('''
+-- Criação da tabela de cupcakes
+CREATE TABLE IF NOT EXISTS cupcakes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome TEXT NOT NULL,
+    descricao TEXT,
+    preco REAL NOT NULL,
+    imagem_url TEXT,
+    estoque INTEGER NOT NULL DEFAULT 0,
+    ativo BOOLEAN NOT NULL DEFAULT 1
+);
+
+-- Inserção de dados para teste
+INSERT INTO cupcakes (nome, descricao, preco, imagem_url, estoque, ativo) VALUES 
+('Cupcake de Chocolate', 'Massa de cacau com cobertura de ganache', 8.50, 'https://via.placeholder.com/150/4d2600/ffffff?text=Chocolate', 15, 1),
+('Cupcake de Morango', 'Massa de baunilha com recheio e frosting de morango', 9.00, 'https://via.placeholder.com/150/ff9999/ffffff?text=Morango', 8, 1),
+('Cupcake Red Velvet', 'Tradicional red velvet com cream cheese', 12.00, 'https://via.placeholder.com/150/800000/ffffff?text=Red+Velvet', 0, 1),
+('Cupcake de Limão', 'Massa cítrica com merengue tostado', 8.00, 'https://via.placeholder.com/150/ccffcc/000000?text=Limao', 20, 0);
+''')
+
+# Salva as alterações e fecha a conexão
+conn.commit()
+conn.close()
+
+print("Banco de dados 'cupcakes.db' criado e populado com sucesso!")
