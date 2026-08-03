@@ -31,7 +31,6 @@ def listar_cupcakes_ativos():
     cupcakes = [dict(row) for row in resultados]
     return cupcakes
 
-# Nova rota adicionada para atender aos requisitos da US02
 @app.get("/api/cupcakes/{cupcake_id}")
 def obter_detalhes_cupcake(cupcake_id: int):
     """
