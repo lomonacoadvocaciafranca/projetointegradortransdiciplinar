@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 import sqlite3
 
 app = FastAPI(title="API Vitrine de Cupcakes")
@@ -30,3 +30,29 @@ def listar_cupcakes_ativos():
     # Converte os resultados em uma lista de dicionários
     cupcakes = [dict(row) for row in resultados]
     return cupcakes
+
+# Nova rota adicionada para atender aos requisitos da US02
+@app.get("/api/cupcakes/{cupcake_id}")
+def obter_detalhes_cupcake(cupcake_id: int):
+    """
+    Retorna todos os detalhes de um cupcake específico filtrado pelo ID, 
+    incluindo ingredientes, tabela nutricional e alergênicos.
+    """
+    conn = get_db_connection()
+    
+    query = """
+        SELECT id, nome, descricao, preco, imagem_url, estoque, 
+               ingredientes, tabela_nutricional, alergenicos 
+        FROM cupcakes 
+        WHERE id = ? AND ativo = 1
+    """
+    
+    resultado = conn.execute(query, (cupcake_id,)).fetchone()
+    conn.close()
+    
+    # Caso o ID informado não exista ou o produto não esteja ativo
+    if resultado is None:
+        raise HTTPException(status_code=404, detail="Cupcake não encontrado")
+        
+    # Retorna o registro encontrado convertido em dicionário
+    return dict(resultado)
