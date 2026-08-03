@@ -320,3 +320,7 @@ with aba_pedidos:
                             st.write(f"✅ {status_list[idx]}")
                         else:
                             st.write(f"⏳ {status_list[idx]}")
+
+    
+
+    
