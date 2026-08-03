@@ -1,12 +1,22 @@
 import streamlit as st
 import requests
 
-st.set_page_config(page_title="Vitrine de Cupcakes", page_icon="🧁", layout="wide")
+# Layout focado para mobile/responsivo
+st.set_page_config(page_title="Vitrine de Cupcakes", page_icon="🧁", layout="centered")
 
-# Gerenciamento de estado para saber se um cupcake foi clicado
+# ==========================================
+# INICIALIZAÇÃO DOS ESTADOS (SESSIONS)
+# ==========================================
 if 'cupcake_selecionado' not in st.session_state:
     st.session_state.cupcake_selecionado = None
 
+# Dicionário do carrinho: {id_do_cupcake: quantidade_selecionada}
+if 'carrinho' not in st.session_state:
+    st.session_state.carrinho = {}
+
+# ==========================================
+# FUNÇÕES DE INTEGRAÇÃO COM A API
+# ==========================================
 @st.cache_data(ttl=60)
 def buscar_cupcakes():
     try:
@@ -24,85 +34,121 @@ def buscar_detalhes(cupcake_id):
     except requests.exceptions.RequestException:
         return None
 
+# Carrega a lista base de produtos para mapear nomes no carrinho
+lista_produtos = buscar_cupcakes()
+mapa_produtos = {p['id']: p for p in lista_produtos}
+
+# Cálculo da quantidade total de itens no carrinho (Tempo Real)
+total_itens_carrinho = sum(st.session_state.carrinho.values())
+
 # ==========================================
-# TELA 2: DETALHES DO PRODUTO (US02)
+# CABEÇALHO COMPARTILHADO E ÍCONE DO CARRINHO (US04)
+# ==========================================
+# Exibe o ícone com a contagem atualizada no topo direito
+st.markdown(f"<h3 style='text-align: right;'>🛒 Carrinho: {total_itens_carrinho} itens</h3>", unsafe_allow_html=True)
+
+# Módulo visual do Carrinho (Resumo do Pedido Único)
+if total_itens_carrinho > 0:
+    with st.expander("📄 Ver Itens do meu Pedido"):
+        total_geral = 0.0
+        for item_id, qtd in list(st.session_state.carrinho.items()):
+            if item_id in mapa_produtos:
+                prod = mapa_produtos[item_id]
+                subtotal = prod['preco'] * qtd
+                total_geral += subtotal
+                st.markdown(f"**{qtd}x** {prod['nome']} — *R$ {subtotal:.2f}*")
+        st.divider()
+        st.markdown(f"**Valor Total: R$ {total_geral:.2f}**")
+        if st.button("Limpar Carrinho", use_container_width=True):
+            st.session_state.carrinho = {}
+            st.rerun()
+
+# ==========================================
+# TELA 2: DETALHES DO PRODUTO (US02 & US04)
 # ==========================================
 if st.session_state.cupcake_selecionado is not None:
     cupcake_id = st.session_state.cupcake_selecionado
     produto = buscar_detalhes(cupcake_id)
     
-    # Botão de voltar
-    if st.button("⬅️ Voltar para o Catálogo"):
+    if st.button("⬅️ Voltar para o Catálogo", use_container_width=True):
         st.session_state.cupcake_selecionado = None
         st.rerun()
         
     if produto:
         st.title(produto['nome'])
-        col1, col2 = st.columns([1, 2])
+        st.image(produto["imagem_url"], use_container_width=True)
         
-        with col1:
-            st.image(produto["imagem_url"], use_container_width=True)
-            preco_formatado = f"R$ {produto['preco']:.2f}".replace('.', ',')
-            st.subheader(preco_formatado)
+        preco_formatado = f"R$ {produto['preco']:.2f}".replace('.', ',')
+        st.subheader(preco_formatado)
+        st.write(produto['descricao'])
+        st.divider()
+        
+        # Regra de validação de estoque máximo disponível considerando o que já está no carrinho
+        qtd_atual_no_carrinho = st.session_state.carrinho.get(produto["id"], 0)
+        estoque_disponivel = produto['estoque'] - qtd_atual_no_carrinho
+        
+        if estoque_disponivel <= 0:
+            st.error("Você já adicionou o limite máximo disponível deste cupcake ao carrinho!")
+            st.button("🛒 Adicionar ao Carrinho", type="primary", use_container_width=True, disabled=True)
+        else:
+            # Campo de seleção de quantidade da US02
+            quantidade = st.number_input("Quantidade:", min_value=1, max_value=estoque_disponivel, step=1)
             
-            # Campo para selecionar a quantidade (Critério de Aceite 2)
-            max_qtd = produto['estoque'] if produto['estoque'] > 0 else 1
-            quantidade = st.number_input("Quantidade desejada:", min_value=1, max_value=max_qtd, step=1, disabled=(produto['estoque'] == 0))
+            # Botão de ação da US04 na tela de detalhes
+            if st.button("🛒 Adicionar ao Carrinho", type="primary", use_container_width=True):
+                st.session_state.carrinho[produto["id"]] = qtd_atual_no_carrinho + quantidade
+                st.toast(f"{quantidade}x {produto['nome']} adicionado ao carrinho!")
+                st.session_state.cupcake_selecionado = None  # Retorna à vitrine após adicionar
+                st.rerun()
             
-            if produto['estoque'] > 0:
-                st.button("🛒 Adicionar ao Carrinho", type="primary")
-            else:
-                st.error("Produto Esgotado")
-                
-        with col2:
-            st.markdown("### Descrição")
-            st.write(produto['descricao'])
-            
-            # Informações detalhadas (Critério de Aceite 1)
-            st.markdown("### 📝 Ingredientes")
-            st.write(produto.get('ingredientes', 'Informação indisponível.'))
-            
-            st.markdown("### ⚠️ Alergênicos")
-            st.warning(produto.get('alergenicos', 'Nenhuma informação de alergênicos.'))
-            
-            st.markdown("### 📊 Tabela Nutricional")
-            st.info(produto.get('tabela_nutricional', 'Informação indisponível.'))
+        st.divider()
+        st.markdown("### 📝 Ingredientes")
+        st.write(produto.get('ingredientes', 'Informação indisponível.'))
+        st.markdown("### ⚠️ Alergênicos")
+        st.warning(produto.get('alergenicos', 'Nenhuma informação de alergênicos.'))
+        st.markdown("### 📊 Tabela Nutricional")
+        st.info(produto.get('tabela_nutricional', 'Informação indisponível.'))
     else:
         st.error("Erro ao carregar os detalhes do produto.")
 
 # ==========================================
-# TELA 1: VITRINE DE CUPCAKES
+# TELA 1: VITRINE DE CUPCAKES (US01 & US04)
 # ==========================================
 else:
     st.title("🧁 Catálogo de Cupcakes")
     st.markdown("Confira nossos sabores disponíveis!")
     st.divider()
 
-    produtos = buscar_cupcakes()
-
-    if not produtos:
+    if not lista_produtos:
         st.warning("Nenhum cupcake disponível no momento.")
     else:
-        colunas = st.columns(3)
-        
-        for index, produto in enumerate(produtos):
-            with colunas[index % 3]:
-                with st.container(border=True):
-                    st.image(produto["imagem_url"], use_container_width=True)
-                    st.subheader(produto["nome"])
-                    st.write(produto["descricao"])
-                    
-                    preco_formatado = f"R$ {produto['preco']:.2f}".replace('.', ',')
-                    st.markdown(f"**Preço:** {preco_formatado}")
-                    
-                    if produto["estoque"] > 5:
-                        st.success(f"Em estoque ({produto['estoque']} unidades)")
-                    elif 0 < produto["estoque"] <= 5:
-                        st.warning(f"Últimas unidades! ({produto['estoque']} restam)")
-                    else:
-                        st.error("Esgotado")
-                    
-                    # Botão para acionar a visualização de detalhes (História do Usuário)
-                    if st.button("Ver Detalhes", key=f"detalhes_{produto['id']}"):
-                        st.session_state.cupcake_selecionado = produto['id']
-                        st.rerun()
+        for produto in lista_produtos:
+            with st.container(border=True):
+                st.image(produto["imagem_url"], use_container_width=True)
+                st.subheader(produto["nome"])
+                st.write(produto["descricao"])
+                
+                preco_formatado = f"R$ {produto['preco']:.2f}".replace('.', ',')
+                st.markdown(f"**Preço:** {preco_formatado}")
+                
+                # Validação rápida de estoque para a vitrine
+                qtd_no_carrinho = st.session_state.carrinho.get(produto["id"], 0)
+                limite_atingido = qtd_no_carrinho >= produto["estoque"]
+                
+                if produto["estoque"] > 5:
+                    st.success(f"Em estoque ({produto['estoque']} un.)")
+                elif 0 < produto["estoque"] <= 5:
+                    st.warning(f"Últimas unidades! ({produto['estoque']} restam)")
+                else:
+                    st.error("Esgotado")
+                
+                # Botão 1: Acessar Detalhes (US02)
+                if st.button("Ver Detalhes", key=f"detalhes_{produto['id']}", use_container_width=True):
+                    st.session_state.cupcake_selecionado = produto['id']
+                    st.rerun()
+                
+                # Botão 2: Adicionar Direto da Vitrine (US04 - Critério de Aceite 1)
+                if st.button("🛒 Adicionar ao Carrinho", key=f"add_vitrine_{produto['id']}", use_container_width=True, disabled=(produto["estoque"] == 0 or limite_atingido)):
+                    st.session_state.carrinho[produto["id"]] = qtd_no_carrinho + 1
+                    st.toast(f"1x {produto['nome']} adicionado ao carrinho!")
+                    st.rerun()
