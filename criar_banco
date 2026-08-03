@@ -4,29 +4,35 @@ import sqlite3
 conn = sqlite3.connect('cupcakes.db')
 cursor = conn.cursor()
 
-# Executa o script SQL para criar a tabela e inserir os dados de exemplo
+# Executa o script SQL para recriar a tabela com as novas colunas e inserir os dados de exemplo
 cursor.executescript('''
--- Criação da tabela de cupcakes
-CREATE TABLE IF NOT EXISTS cupcakes (
+-- Remove a tabela antiga se ela existir para evitar conflitos de colunas
+DROP TABLE IF EXISTS cupcakes;
+
+-- Criação da nova tabela de cupcakes (incluindo campos da US02)
+CREATE TABLE cupcakes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nome TEXT NOT NULL,
     descricao TEXT,
     preco REAL NOT NULL,
     imagem_url TEXT,
     estoque INTEGER NOT NULL DEFAULT 0,
-    ativo BOOLEAN NOT NULL DEFAULT 1
+    ativo BOOLEAN NOT NULL DEFAULT 1,
+    ingredientes TEXT,
+    tabela_nutricional TEXT,
+    alergenicos TEXT
 );
 
--- Inserção de dados para teste
-INSERT INTO cupcakes (nome, descricao, preco, imagem_url, estoque, ativo) VALUES 
-('Cupcake de Chocolate', 'Massa de cacau com cobertura de ganache', 8.50, 'https://via.placeholder.com/150/4d2600/ffffff?text=Chocolate', 15, 1),
-('Cupcake de Morango', 'Massa de baunilha com recheio e frosting de morango', 9.00, 'https://via.placeholder.com/150/ff9999/ffffff?text=Morango', 8, 1),
-('Cupcake Red Velvet', 'Tradicional red velvet com cream cheese', 12.00, 'https://via.placeholder.com/150/800000/ffffff?text=Red+Velvet', 0, 1),
-('Cupcake de Limão', 'Massa cítrica com merengue tostado', 8.00, 'https://via.placeholder.com/150/ccffcc/000000?text=Limao', 20, 0);
+-- Inserção de dados para teste com as novas informações
+INSERT INTO cupcakes (nome, descricao, preco, imagem_url, estoque, ativo, ingredientes, tabela_nutricional, alergenicos) VALUES 
+('Cupcake de Chocolate', 'Massa de cacau com cobertura de ganache', 8.50, 'https://via.placeholder.com/150/4d2600/ffffff?text=Chocolate', 15, 1, 'Farinha de trigo, açúcar, cacau em pó, ovos, manteiga, chocolate.', 'Porção 100g: 350kcal, Carboidratos 45g, Proteínas 5g, Gorduras 15g.', 'Contém glúten, contém lactose. Pode conter traços de amendoim.'),
+('Cupcake de Morango', 'Massa de baunilha com recheio e frosting de morango', 9.00, 'https://via.placeholder.com/150/ff9999/ffffff?text=Morango', 8, 1, 'Farinha de trigo, açúcar, ovos, manteiga, morangos frescos.', 'Porção 100g: 320kcal, Carboidratos 50g, Proteínas 4g, Gorduras 12g.', 'Contém glúten, contém lactose.'),
+('Cupcake Red Velvet', 'Tradicional red velvet com cream cheese', 12.00, 'https://via.placeholder.com/150/800000/ffffff?text=Red+Velvet', 0, 1, 'Farinha de trigo, açúcar, cacau, ovos, cream cheese, manteiga.', 'Porção 100g: 380kcal, Carboidratos 40g, Proteínas 6g, Gorduras 18g.', 'Contém glúten, contém lactose.'),
+('Cupcake de Limão', 'Massa cítrica com merengue tostado', 8.00, 'https://via.placeholder.com/150/ccffcc/000000?text=Limao', 20, 0, 'Farinha, açúcar, suco de limão, claras em neve.', 'Porção 100g: 300kcal.', 'Contém glúten.');
 ''')
 
 # Salva as alterações e fecha a conexão
 conn.commit()
 conn.close()
 
-print("Banco de dados 'cupcakes.db' criado e populado com sucesso!")
+print("Banco de dados 'cupcakes.db' atualizado e populado com sucesso para a US02!")
