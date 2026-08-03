@@ -1,0 +1,322 @@
+import streamlit as st
+import requests
+import uuid
+import time
+
+# Configuração da página do Streamlit
+st.set_page_config(
+    page_title="Loja de Cupcakes",
+    page_icon="🧁",
+    layout="wide"
+)
+
+# --- INICIALIZAÇÃO DO ESTADO DA SESSÃO ---
+if "cupcake_selecionado" not in st.session_state:
+    st.session_state.cupcake_selecionado = None
+if "carrinho" not in st.session_state:
+    st.session_state.carrinho = []
+if "modo_checkout" not in st.session_state:
+    st.session_state.modo_checkout = False
+if "pedido_finalizado" not in st.session_state:
+    st.session_state.pedido_finalizado = False
+if "numero_pedido" not in st.session_state:
+    st.session_state.numero_pedido = None
+if "endereco" not in st.session_state:
+    st.session_state.endereco = None
+if "taxa_entrega" not in st.session_state:
+    st.session_state.taxa_entrega = 0.0
+if "tempo_entrega" not in st.session_state:
+    st.session_state.tempo_entrega = None
+if "meus_pedidos" not in st.session_state:
+    st.session_state.meus_pedidos = []
+
+# URL da API backend (FastAPI)
+API_URL = "http://127.0.0.1:8000"
+
+# --- FUNÇÕES ---
+def adicionar_ao_carrinho(cupcake):
+    st.session_state.carrinho.append(cupcake)
+    st.toast(f"✅ {cupcake.get('nome')} adicionado ao carrinho!", icon="🛒")
+
+def carregar_cupcakes():
+    try:
+        response = requests.get(f"{API_URL}/cupcakes")
+        if response.status_code == 200:
+            return response.json()
+        return []
+    except Exception:
+        st.error("Erro ao conectar com o backend. Verifique se a API está rodando.")
+        return []
+
+def buscar_cep(cep):
+    """Integração com a API ViaCEP (US09)"""
+    try:
+        cep_limpo = cep.replace("-", "").replace(".", "")
+        if len(cep_limpo) != 8:
+            return None
+            
+        response = requests.get(f"https://viacep.com.br/ws/{cep_limpo}/json/")
+        if response.status_code == 200:
+            dados = response.json()
+            if "erro" not in dados:
+                return dados
+    except Exception:
+        pass
+    return None
+
+def calcular_frete(cep):
+    """Simula o cálculo de frete e tempo (US09)"""
+    # Lógica fictícia baseada no CEP
+    if cep.startswith("0") or cep.startswith("1"): # Região SP
+        return 5.00, "15 a 30 minutos"
+    else: # Outras regiões
+        return 12.00, "45 a 60 minutos"
+
+def simular_pagamento(metodo):
+    """Finaliza o pedido e adiciona na lista de Meus Pedidos (US08, US10)"""
+    st.session_state.pedido_finalizado = True
+    numero = str(uuid.uuid4()).split('-')[0].upper()
+    st.session_state.numero_pedido = numero
+    
+    # Salva o pedido para acompanhamento (US10)
+    novo_pedido = {
+        "numero": numero,
+        "itens": st.session_state.carrinho.copy(),
+        "total": sum(c.get('preco', 0.0) for c in st.session_state.carrinho) + st.session_state.taxa_entrega,
+        "status": "Recebido",
+        "endereco": st.session_state.endereco
+    }
+    st.session_state.meus_pedidos.insert(0, novo_pedido)
+    
+    st.session_state.modo_checkout = False
+    st.session_state.carrinho = []
+    st.session_state.endereco = None
+    st.session_state.taxa_entrega = 0.0
+
+# ==========================================
+# FLUXO 1: TELA DE SUCESSO E ACOMPANHAMENTO
+# ==========================================
+if st.session_state.pedido_finalizado:
+    st.balloons()
+    st.success(f"🎉 Pagamento Aprovado! Seu pedido **#{st.session_state.numero_pedido}** foi gerado com sucesso.")
+    st.info("📧 Um e-mail com o recibo e os detalhes da entrega foi disparado para você.")
+    
+    # US10: Acompanhamento de Status do Pedido (Simulação Interativa)
+    st.subheader("📍 Acompanhamento do Pedido")
+    
+    status_opcoes = ["Recebido", "Em Preparo", "Saiu para Entrega", "Entregue"]
+    
+    # Simula a mudança de status para efeitos de demonstração
+    status_atual = st.radio("Simular Mudança de Status (Apenas para teste de demonstração):", status_opcoes, index=0)
+    
+    if st.session_state.meus_pedidos:
+        st.session_state.meus_pedidos[0]["status"] = status_atual
+    
+    # Linha do tempo visual do status
+    st.progress((status_opcoes.index(status_atual) + 1) / len(status_opcoes))
+    cols = st.columns(len(status_opcoes))
+    for i, col in enumerate(cols):
+        with col:
+            if i <= status_opcoes.index(status_atual):
+                st.write(f"✅ **{status_opcoes[i]}**")
+            else:
+                st.write(f"⏳ {status_opcoes[i]}")
+                
+    st.divider()
+    if st.button("Voltar para a Loja"):
+        st.session_state.pedido_finalizado = False
+        st.rerun()
+    st.stop()
+
+# ==========================================
+# FLUXO 2: TELA DE CHECKOUT (US06, US07, US09)
+# ==========================================
+if st.session_state.modo_checkout:
+    st.title("🛒 Checkout e Entrega")
+    
+    if not st.session_state.carrinho:
+        st.warning("Seu carrinho está vazio.")
+        if st.button("Voltar à Loja"):
+            st.session_state.modo_checkout = False
+            st.rerun()
+        st.stop()
+    
+    col_entrega, col_pagamento = st.columns([1.5, 1])
+    
+    # US09: Cadastro de Endereço e Cálculo de Frete
+    with col_entrega:
+        st.subheader("1. Endereço de Entrega")
+        cep_input = st.text_input("CEP (Apenas números ou com traço)", max_chars=9)
+        
+        if st.button("Buscar CEP e Calcular Frete"):
+            dados_endereco = buscar_cep(cep_input)
+            if dados_endereco:
+                taxa, tempo = calcular_frete(cep_input)
+                st.session_state.endereco = dados_endereco
+                st.session_state.taxa_entrega = taxa
+                st.session_state.tempo_entrega = tempo
+                st.success(f"CEP Encontrado: {dados_endereco['logradouro']}, {dados_endereco['bairro']} - {dados_endereco['localidade']}/{dados_endereco['uf']}")
+                st.info(f"🚚 Tempo estimado: **{tempo}**")
+            else:
+                st.error("❌ CEP inválido ou não encontrado.")
+                
+        if st.session_state.endereco:
+            with st.form("form_endereco"):
+                st.write("**Preencha os detalhes do endereço:**")
+                rua = st.text_input("Logradouro", value=st.session_state.endereco.get('logradouro', ''))
+                numero = st.text_input("Número")
+                # US09: Campo para complementos
+                complemento = st.text_input("Complemento (Bloco, Apto, Ponto de Referência)")
+                bairro = st.text_input("Bairro", value=st.session_state.endereco.get('bairro', ''))
+                
+                endereco_confirmado = st.form_submit_button("Confirmar Endereço")
+                if endereco_confirmado:
+                    if not numero:
+                        st.warning("O número da residência é obrigatório.")
+                    else:
+                        st.toast("✅ Endereço confirmado!")
+        
+        st.divider()
+        st.subheader("2. Resumo do Pedido")
+        subtotal = sum(c.get('preco', 0.0) for c in st.session_state.carrinho)
+        total = subtotal + st.session_state.taxa_entrega
+        
+        for c in st.session_state.carrinho:
+            st.write(f"- {c.get('nome')} (R$ {c.get('preco', 0.0):.2f})")
+            
+        st.write(f"**Subtotal:** R$ {subtotal:.2f}")
+        st.write(f"**Taxa de Entrega:** R$ {st.session_state.taxa_entrega:.2f}")
+        st.markdown(f"### **Valor Total:** R$ {total:.2f}")
+        
+        if st.button("⬅️ Voltar ao Carrinho"):
+            st.session_state.modo_checkout = False
+            st.rerun()
+
+    # US07: Múltiplos Métodos de Pagamento
+    with col_pagamento:
+        st.subheader("3. Pagamento")
+        if not st.session_state.endereco:
+            st.warning("⚠️ Calcule o frete e confirme o endereço primeiro.")
+        else:
+            metodo = st.radio("Escolha como deseja pagar:", ["PIX", "Cartão de Crédito", "Cartão de Débito"])
+            
+            if metodo == "PIX":
+                st.info("Escaneie o QR Code abaixo ou use a chave Copia e Cola.")
+                st.image("https://via.placeholder.com/150/000000/FFFFFF?text=QR+CODE+PIX", width=150)
+                st.write("**Copia e Cola:**")
+                st.code("00020126580014br.gov.bcb.pix0136fake-pix-key")
+                
+                if st.button("Simular Pagamento PIX (Aprovar)"):
+                    simular_pagamento("PIX")
+                    st.rerun()
+                    
+            else: # Cartões
+                numero_cartao = st.text_input("Número do Cartão (16 dígitos)", max_chars=16)
+                col_validade, col_cvv = st.columns(2)
+                with col_validade:
+                    validade = st.text_input("Validade (MM/AA)", max_chars=5)
+                with col_cvv:
+                    cvv = st.text_input("CVV", max_chars=3)
+                    
+                if st.button(f"Confirmar Pagamento ({metodo})"):
+                    if len(numero_cartao) == 16 and numero_cartao.isdigit():
+                        simular_pagamento(metodo)
+                        st.rerun()
+                    else:
+                        st.error("❌ Número de cartão inválido. O cartão deve conter 16 números.")
+    
+    st.stop()
+
+# ==========================================
+# FLUXO 3: TELA PRINCIPAL (VITRINE E HISTÓRICO)
+# ==========================================
+# Implementação da US10: Abas para separar a loja dos pedidos
+aba_loja, aba_pedidos = st.tabs(["🧁 Vitrine da Loja", "📦 Meus Pedidos"])
+
+with aba_loja:
+    col_titulo, col_carrinho = st.columns([3, 1])
+    with col_titulo:
+        st.title("🧁 Loja de Cupcakes")
+    with col_carrinho:
+        st.metric(label="🛒 Carrinho", value=f"{len(st.session_state.carrinho)} item(ns)")
+
+    st.divider()
+    cupcakes = carregar_cupcakes()
+
+    if cupcakes:
+        col_vitrine, col_detalhes = st.columns([2, 1])
+        
+        with col_vitrine:
+            for cupcake in cupcakes:
+                with st.container():
+                    st.markdown(f"### {cupcake.get('nome')}")
+                    st.write(f"**Descrição:** {cupcake.get('descricao', '')}")
+                    st.write(f"**Preço:** R$ {cupcake.get('preco'):.2f}")
+                    
+                    b1, b2 = st.columns([1, 1])
+                    with b1:
+                        if st.button("👁️ Ver Detalhes", key=f"det_{cupcake.get('id')}"):
+                            st.session_state.cupcake_selecionado = cupcake
+                    with b2:
+                        if st.button("🛒 Adicionar ao Carrinho", key=f"add_{cupcake.get('id')}"):
+                            adicionar_ao_carrinho(cupcake)
+                    st.divider()
+                    
+        with col_detalhes:
+            st.subheader("Detalhes do Produto")
+            if st.session_state.cupcake_selecionado:
+                item = st.session_state.cupcake_selecionado
+                st.success(f"**{item.get('nome')}**")
+                st.write(f"**Preço:** R$ {item.get('preco'):.2f}")
+                st.write(f"**Ingredientes:** {item.get('ingredientes', 'N/A')}")
+                
+                if st.button("🛒 Adicionar ao Carrinho", key=f"add_det_{item.get('id')}"):
+                    adicionar_ao_carrinho(item)
+            else:
+                st.info("Clique em 'Ver Detalhes' na vitrine.")
+                    
+            st.divider()
+            
+            # Resumo do Carrinho
+            if st.session_state.carrinho:
+                st.subheader("🛍️ Seu Carrinho")
+                subt_carrinho = sum(c.get('preco', 0.0) for c in st.session_state.carrinho)
+                st.write(f"**Subtotal:** R$ {subt_carrinho:.2f}")
+                
+                if st.button("💳 Ir para o Checkout", type="primary"):
+                    st.session_state.modo_checkout = True
+                    st.rerun()
+                    
+                if st.button("🗑️ Limpar Carrinho"):
+                    st.session_state.carrinho = []
+                    st.rerun()
+
+# Implementação da US10: Acompanhamento de Pedidos
+with aba_pedidos:
+    st.title("📦 Meus Pedidos")
+    if not st.session_state.meus_pedidos:
+        st.info("Você ainda não fez nenhum pedido.")
+    else:
+        for p in st.session_state.meus_pedidos:
+            with st.expander(f"Pedido #{p['numero']} - {p['status']} (R$ {p['total']:.2f})", expanded=True):
+                st.write("**Itens:**")
+                for i in p["itens"]:
+                    st.write(f"- {i['nome']}")
+                
+                if p.get("endereco"):
+                    end = p["endereco"]
+                    st.write(f"**Entrega em:** {end.get('logradouro', '')}, {end.get('bairro', '')}")
+                
+                # Linha do tempo visual no histórico
+                st.write("**Status Atual:**")
+                status_list = ["Recebido", "Em Preparo", "Saiu para Entrega", "Entregue"]
+                
+                st.progress((status_list.index(p['status']) + 1) / len(status_list))
+                
+                cols_status = st.columns(len(status_list))
+                for idx, c_stat in enumerate(cols_status):
+                    with c_stat:
+                        if idx <= status_list.index(p['status']):
+                            st.write(f"✅ {status_list[idx]}")
+                        else:
+                            st.write(f"⏳ {status_list[idx]}")
